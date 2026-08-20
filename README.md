@@ -25,7 +25,7 @@ VCS implementations provide an adapter that can:
 
 The Zig API exposes the adapter, carrier, transport, collaboration, conformance, and publication primitives. A versioned C ABI is available in [`include/apricot.h`](include/apricot.h) for host callbacks, operations, carrier verification, and collaboration requests. The `apct` executable is a fallback and diagnostic client. A VCS with native integration does not require users to invoke it.
 
-Superdetermine is the first complete adapter. It restores its authoritative repository state byte for byte while excluding documented host-local and transient data that does not affect repository semantics.
+Superdetermine and Pijul provide the first real adapters. Both restore their authoritative repository state byte for byte while excluding documented host-local, transient, ignored, and untracked data that does not affect repository semantics.
 
 ## Forge support
 
@@ -39,6 +39,13 @@ Apricot currently provides:
 - A provider-neutral conformance probe for transport and collaboration discovery.
 
 Actual collaboration operations depend on the capabilities exposed by each forge. Unsupported fields and operations are reported explicitly.
+
+VCS authors normally embed Apricot. The fallback client can exercise an adapter directly:
+
+```sh
+apct publish --vcs pijul https://github.com/owner/repository path/to/repository
+apct fetch --vcs pijul https://github.com/owner/repository restored-repository
+```
 
 ## Current limitations
 

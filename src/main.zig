@@ -18,16 +18,25 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, args.items[1], "version") or std.mem.eql(u8, args.items[1], "--version")) {
         try stdout.print("apct {s}\n", .{apricot.version});
     } else if (std.mem.eql(u8, args.items[1], "features")) {
-        try stdout.writeAll("carrier-v1\ncarrier-store-v1\nadapter-v1\nembedded-api-v1\ncollaboration-api-v1\nedge-transactions-v1\ngit-smart-http-v0\nsuperdetermine-filesystem-archive-v1\n");
+        try stdout.writeAll("carrier-v1\ncarrier-store-v1\nadapter-v1\nembedded-api-v1\ncollaboration-api-v1\nedge-transactions-v1\ngit-smart-http-v0\nsuperdetermine-filesystem-archive-v1\npijul-filesystem-archive-v1\n");
     } else if (std.mem.eql(u8, args.items[1], "probe")) {
         if (args.items.len != 3) return error.InvalidArguments;
         try probe(init, stdout, args.items[2]);
     } else if (std.mem.eql(u8, args.items[1], "publish")) {
-        if (args.items.len < 3 or args.items.len > 4) return error.InvalidArguments;
-        try publish(init, stdout, args.items[2], if (args.items.len == 4) args.items[3] else ".");
+        if (args.items.len >= 5 and std.mem.eql(u8, args.items[2], "--vcs")) {
+            if (args.items.len > 6 or !std.mem.eql(u8, args.items[3], "pijul")) return error.InvalidArguments;
+            try apricot.pijul_cli.publish(init, stdout, args.items[4], if (args.items.len == 6) args.items[5] else ".", configuredSignature(init));
+        } else {
+            if (args.items.len < 3 or args.items.len > 4) return error.InvalidArguments;
+            try publish(init, stdout, args.items[2], if (args.items.len == 4) args.items[3] else ".");
+        }
     } else if (std.mem.eql(u8, args.items[1], "fetch")) {
-        if (args.items.len != 4) return error.InvalidArguments;
-        try fetch(init, stdout, args.items[2], args.items[3]);
+        if (args.items.len == 6 and std.mem.eql(u8, args.items[2], "--vcs") and std.mem.eql(u8, args.items[3], "pijul")) {
+            try apricot.pijul_cli.fetch(init, stdout, args.items[4], args.items[5]);
+        } else {
+            if (args.items.len != 4) return error.InvalidArguments;
+            try fetch(init, stdout, args.items[2], args.items[3]);
+        }
     } else if (std.mem.eql(u8, args.items[1], "verify")) {
         if (args.items.len != 3) return error.InvalidArguments;
         try verify(init, stdout, args.items[2]);
@@ -50,13 +59,25 @@ fn printHelp(writer: *std.Io.Writer) !void {
         \\  probe URL  Discover Git smart-HTTP capabilities
         \\  publish URL [PATH]
         \\              Publish an exact sdt carrier and browsable projection
+        \\  publish --vcs pijul URL [PATH]
+        \\              Publish an exact Pijul carrier and browsable projection
         \\  fetch URL PATH
         \\              Restore the exact sdt repository into an empty path
+        \\  fetch --vcs pijul URL PATH
+        \\              Restore the exact Pijul repository into an empty path
         \\  verify URL  Fetch and verify the exact carrier without restoring
         \\
         \\Authentication uses APRICOT_USERNAME and APRICOT_TOKEN.
+        \\Projection identity uses APRICOT_AUTHOR_NAME and APRICOT_AUTHOR_EMAIL.
         \\
     );
+}
+
+fn configuredSignature(init: std.process.Init) apricot.git_forge.Signature {
+    return .{
+        .name = init.environ_map.get("APRICOT_AUTHOR_NAME") orelse init.environ_map.get("USER") orelse "Apricot",
+        .email = init.environ_map.get("APRICOT_AUTHOR_EMAIL") orelse "apricot@localhost",
+    };
 }
 
 fn client(init: std.process.Init) apricot.git_http.Client {
