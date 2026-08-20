@@ -133,7 +133,7 @@ pub const SuperdetermineAdapter = struct {
         try sink.emitResource(.{ .id = ".", .kind = "tree", .media_type = "application/vnd.apricot.tree", .payload = "" });
         for (archive.entries) |entry| switch (entry.kind) {
             .file => if (!isVcsMetadataPath(entry.path)) {
-                try sink.emitResource(.{ .id = entry.path, .kind = "file", .media_type = "application/octet-stream", .payload = entry.data });
+                try sink.emitResource(.{ .id = entry.path, .kind = "file", .media_type = "application/octet-stream", .payload = entry.data, .executable = entry.mode & 0o111 != 0 });
                 try sink.emitRelation(.{ .kind = "contains", .source = ".", .target = entry.path });
             },
             .symlink => if (!isVcsMetadataPath(entry.path)) {

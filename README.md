@@ -23,6 +23,8 @@ VCS implementations provide an adapter that can:
 - Produce a browsable forge projection.
 - Explicitly import, require resolution for, or refuse changes made to the projection.
 
+Filesystem-backed VCSs can use `filesystem_adapter`. They provide their identity, metadata roots, tracked paths, exclusions, and an optional native snapshot hook. Apricot supplies canonical archives, hashing, resource limits, stable capture, safe restoration, projection scaffolding, and default foreign-change refusal. Metadata may be a directory database or a single repository file.
+
 The Zig API exposes the adapter, carrier, transport, collaboration, conformance, and publication primitives. A versioned C ABI is available in [`include/apricot.h`](include/apricot.h) for host callbacks, operations, carrier verification, and collaboration requests. The `apct` executable is a fallback and diagnostic client. A VCS with native integration does not require users to invoke it.
 
 Superdetermine and Pijul provide the first real adapters. Both restore their authoritative repository state byte for byte while excluding documented host-local, transient, ignored, and untracked data that does not affect repository semantics.
@@ -45,6 +47,7 @@ VCS authors normally embed Apricot. The fallback client can exercise an adapter 
 ```sh
 apct publish --vcs pijul https://github.com/owner/repository path/to/repository
 apct fetch --vcs pijul https://github.com/owner/repository restored-repository
+apricot-adapter-conformance --vcs pijul path/to/repository empty-restore-path
 ```
 
 ## Current limitations
@@ -65,4 +68,4 @@ zig build test
 zig build check
 ```
 
-The build installs the `apct` executable, the static and shared Apricot libraries, and the C header.
+The build installs `apct`, `apricot-adapter-conformance`, the static and shared Apricot libraries, and the C header.

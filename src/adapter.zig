@@ -98,6 +98,7 @@ pub const ProjectionResource = struct {
     kind: []const u8,
     media_type: []const u8,
     payload: []const u8,
+    executable: bool = false,
 };
 
 pub const ProjectionRelation = struct {

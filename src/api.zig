@@ -460,6 +460,7 @@ const Projection = struct {
         try self.entries.append(self.allocator, .{
             .path = path,
             .kind = if (std.mem.eql(u8, resource.kind, "symlink")) .symlink else .file,
+            .executable = resource.executable,
             .data = data,
         });
     }
@@ -528,6 +529,20 @@ const MaterializedSource = struct {
         return null;
     }
 };
+
+test "projection preserves executable files" {
+    var projection = Projection.init(std.testing.allocator);
+    defer projection.deinit();
+    try projection.sink().emitResource(.{
+        .id = "run",
+        .kind = "file",
+        .media_type = "application/octet-stream",
+        .payload = "#!/bin/sh\n",
+        .executable = true,
+    });
+    try std.testing.expectEqual(@as(usize, 1), projection.entries.items.len);
+    try std.testing.expect(projection.entries.items[0].executable);
+}
 
 const DecodedObjectType = struct {
     kind: []const u8,

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const adapter = @import("adapter.zig");
+pub const adapter_conformance = @import("adapter_conformance.zig");
 pub const api = @import("api.zig");
 pub const carrier = @import("carrier.zig");
 pub const carrier_store = @import("carrier_store.zig");
@@ -9,6 +10,7 @@ pub const collaboration = @import("collaboration.zig");
 pub const conformance = @import("conformance.zig");
 pub const edge = @import("edge.zig");
 pub const forge_drivers = @import("forge_drivers.zig");
+pub const filesystem_adapter = @import("filesystem_adapter.zig");
 pub const git_forge = @import("git_forge.zig");
 pub const git_http = @import("git_http.zig");
 pub const git_transport = @import("git_transport.zig");
