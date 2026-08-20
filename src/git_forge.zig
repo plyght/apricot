@@ -17,6 +17,11 @@ pub const ProjectionEntry = struct {
     data: []const u8,
 };
 
+pub const Signature = struct {
+    name: []const u8,
+    email: []const u8,
+};
+
 pub const Published = struct {
     commit: git.Oid,
     carrier_commit: git.Oid,
@@ -64,11 +69,13 @@ pub fn publish(
     encoded_carrier: []const u8,
     carrier_root: carrier.ContentId,
     projection: []const ProjectionEntry,
+    signature: Signature,
     timestamp: i64,
 ) !Published {
     try carrier.verifyEncoded(carrier_root, encoded_carrier, .{});
     try validateBranch(branch);
     try validateProjection(projection);
+    try validateSignature(signature);
 
     var graph = Graph{ .allocator = allocator };
     defer graph.deinit();
@@ -85,10 +92,10 @@ pub fn publish(
     const scoped_carrier = advertisement.findRef(native_ref);
     const legacy_carrier = advertisement.findRef("refs/apricot/native");
     const old_carrier = scoped_carrier orelse legacy_carrier orelse git.Oid.zero;
-    const commit_data = try commitPayload(allocator, tree, if (git.Oid.eql(old, git.Oid.zero)) null else old, carrier_root, timestamp, "Apricot projection");
+    const commit_data = try commitPayload(allocator, tree, if (git.Oid.eql(old, git.Oid.zero)) null else old, carrier_root, signature, timestamp, "Apricot projection");
     const owned_commit_data = try graph.own(commit_data);
     const commit = try graph.append(.{ .kind = .commit, .data = owned_commit_data });
-    const carrier_commit_data = try commitPayload(allocator, carrier_tree, if (git.Oid.eql(old_carrier, git.Oid.zero)) null else old_carrier, carrier_root, timestamp, "Apricot native carrier");
+    const carrier_commit_data = try commitPayload(allocator, carrier_tree, if (git.Oid.eql(old_carrier, git.Oid.zero)) null else old_carrier, carrier_root, signature, timestamp, "Apricot native carrier");
     const owned_carrier_commit_data = try graph.own(carrier_commit_data);
     const carrier_commit = try graph.append(.{ .kind = .commit, .data = owned_carrier_commit_data });
 
@@ -398,7 +405,13 @@ fn validateBranch(branch: []const u8) !void {
     if (branch.len == 0 or branch.len > 255 or std.mem.indexOfAny(u8, branch, "\x00\r\n ~^:?*[\\") != null or std.mem.indexOf(u8, branch, "..") != null) return error.InvalidBranch;
 }
 
-fn commitPayload(allocator: std.mem.Allocator, tree: git.Oid, parent: ?git.Oid, root: carrier.ContentId, timestamp: i64, subject: []const u8) ![]u8 {
+fn validateSignature(signature: Signature) !void {
+    if (signature.name.len == 0 or signature.email.len == 0) return error.InvalidSignature;
+    if (std.mem.indexOfAny(u8, signature.name, "\x00\r\n<>") != null) return error.InvalidSignature;
+    if (std.mem.indexOfAny(u8, signature.email, "\x00\r\n<> ") != null) return error.InvalidSignature;
+}
+
+fn commitPayload(allocator: std.mem.Allocator, tree: git.Oid, parent: ?git.Oid, root: carrier.ContentId, signature: Signature, timestamp: i64, subject: []const u8) ![]u8 {
     var tree_hex: [40]u8 = undefined;
     var parent_hex: [40]u8 = undefined;
     var root_hex: [64]u8 = undefined;
@@ -406,14 +419,14 @@ fn commitPayload(allocator: std.mem.Allocator, tree: git.Oid, parent: ?git.Oid, 
     if (parent) |parent_oid| {
         return std.fmt.allocPrint(
             allocator,
-            "tree {s}\nparent {s}\nauthor Apricot <apricot@localhost> {d} +0000\ncommitter Apricot <apricot@localhost> {d} +0000\n\n{s}\n\nCarrier-Root: {s}\n",
-            .{ tree.format(&tree_hex), parent_oid.format(&parent_hex), timestamp, timestamp, subject, root_text },
+            "tree {s}\nparent {s}\nauthor {s} <{s}> {d} +0000\ncommitter {s} <{s}> {d} +0000\n\n{s}\n\nCarrier-Root: {s}\n",
+            .{ tree.format(&tree_hex), parent_oid.format(&parent_hex), signature.name, signature.email, timestamp, signature.name, signature.email, timestamp, subject, root_text },
         );
     }
     return std.fmt.allocPrint(
         allocator,
-        "tree {s}\nauthor Apricot <apricot@localhost> {d} +0000\ncommitter Apricot <apricot@localhost> {d} +0000\n\n{s}\n\nCarrier-Root: {s}\n",
-        .{ tree.format(&tree_hex), timestamp, timestamp, subject, root_text },
+        "tree {s}\nauthor {s} <{s}> {d} +0000\ncommitter {s} <{s}> {d} +0000\n\n{s}\n\nCarrier-Root: {s}\n",
+        .{ tree.format(&tree_hex), signature.name, signature.email, timestamp, signature.name, signature.email, timestamp, subject, root_text },
     );
 }
 
@@ -479,6 +492,24 @@ fn treeChild(objects: []const git.OwnedObject, tree_oid: git.Oid, name: []const 
 
 fn lessThanString(_: void, left: []const u8, right: []const u8) bool {
     return std.mem.order(u8, left, right) == .lt;
+}
+
+test "commit payload uses the supplied signature for author and committer" {
+    const allocator = std.testing.allocator;
+    const tree = try git.Oid.fromHex("1111111111111111111111111111111111111111");
+    const parent = try git.Oid.fromHex("2222222222222222222222222222222222222222");
+    const root = carrier.ContentId{ .bytes = [_]u8{0x33} ** 32 };
+    const payload = try commitPayload(allocator, tree, parent, root, .{ .name = "Native User", .email = "native@example.com" }, 123, "Projection");
+    defer allocator.free(payload);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "author Native User <native@example.com> 123 +0000\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "committer Native User <native@example.com> 123 +0000\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "Apricot <apricot@localhost>") == null);
+}
+
+test "commit signatures reject injection and incomplete identities" {
+    try std.testing.expectError(error.InvalidSignature, validateSignature(.{ .name = "", .email = "native@example.com" }));
+    try std.testing.expectError(error.InvalidSignature, validateSignature(.{ .name = "Native\nUser", .email = "native@example.com" }));
+    try std.testing.expectError(error.InvalidSignature, validateSignature(.{ .name = "Native User", .email = "native @example.com" }));
 }
 
 test "native carrier references are branch scoped" {

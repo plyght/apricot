@@ -44,6 +44,7 @@ pub const PublishRequest = struct {
     remote: []const u8,
     branch: []const u8 = "main",
     repository_id: []const u8,
+    signature: forge.Signature,
     timestamp: i64,
     carrier_limits: carrier.Limits = .{},
     git_limits: git.Limits = .{},
@@ -186,7 +187,7 @@ pub const Engine = struct {
         var session = try HttpSession.init(self.allocator, self.host, request.remote, request.git_limits);
         defer session.deinit();
         self.host.report(.{ .phase = .publishing, .message = "Publishing projection and native carrier" });
-        const published = try forge.publish(self.allocator, session.smartHttp(request.remote), request.branch, encoded.bytes, encoded.root, projection.entries.items, request.timestamp);
+        const published = try forge.publish(self.allocator, session.smartHttp(request.remote), request.branch, encoded.bytes, encoded.root, projection.entries.items, request.signature, request.timestamp);
         try self.host.checkCancelled();
         self.host.report(.{ .phase = .complete, .completed = 1, .total = 1, .message = "Publish complete" });
         return .{

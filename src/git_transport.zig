@@ -17,10 +17,12 @@ pub const Error = error{
     BadPack,
     BadPktLine,
     BadRef,
+    AuthenticationRequired,
     CapabilityMissing,
     HttpFailure,
     InvalidArgument,
     LimitExceeded,
+    PermissionDenied,
     ProtocolError,
     DeltaInvalid,
     UnresolvedDeltaBase,
@@ -697,7 +699,7 @@ pub const SmartHttp = struct {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/info/refs?service={s}", .{ std.mem.trimEnd(u8, self.base_url, "/"), serviceName(service) });
         defer self.allocator.free(url);
         const response = try self.http.request(.{ .method = .get, .url = url, .headers = self.auth_headers, .body = &.{}, .max_response_bytes = self.limits.max_advertisement });
-        if (response.status != 200) return error.HttpFailure;
+        try requireSuccess(response.status);
         var expected: [64]u8 = undefined;
         const content_type = std.fmt.bufPrint(&expected, "application/x-{s}-advertisement", .{serviceName(service)}) catch unreachable;
         if (!std.mem.eql(u8, response.content_type, content_type)) return error.BadContentType;
@@ -715,7 +717,7 @@ pub const SmartHttp = struct {
         @memcpy(headers[0..self.auth_headers.len], self.auth_headers);
         headers[self.auth_headers.len] = .{ .name = "Content-Type", .value = value };
         const response = try self.http.request(.{ .method = .post, .url = url, .headers = headers, .body = body, .max_response_bytes = self.limits.max_pack + self.limits.max_advertisement });
-        if (response.status != 200) return error.HttpFailure;
+        try requireSuccess(response.status);
         var expected: [64]u8 = undefined;
         const response_type = std.fmt.bufPrint(&expected, "application/x-{s}-result", .{serviceName(service)}) catch unreachable;
         if (!std.mem.eql(u8, response.content_type, response_type)) return error.BadContentType;
@@ -723,10 +725,23 @@ pub const SmartHttp = struct {
     }
 };
 
+fn requireSuccess(status: u16) !void {
+    if (status == 401) return error.AuthenticationRequired;
+    if (status == 403) return error.PermissionDenied;
+    if (status != 200) return error.HttpFailure;
+}
+
 test "object ids match canonical git sha1" {
     const object = Object{ .kind = .blob, .data = "hello\n" };
     var hex: [40]u8 = undefined;
     try std.testing.expectEqualStrings("ce013625030ba8dba906f756967f9e9ca394464a", object.oid().format(&hex));
+}
+
+test "smart HTTP status errors preserve authentication and permission failures" {
+    try std.testing.expectError(error.AuthenticationRequired, requireSuccess(401));
+    try std.testing.expectError(error.PermissionDenied, requireSuccess(403));
+    try std.testing.expectError(error.HttpFailure, requireSuccess(404));
+    try requireSuccess(200);
 }
 
 test "pkt lines round trip and reject truncation" {

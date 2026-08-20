@@ -130,6 +130,7 @@ fn publish(init: std.process.Init, writer: *std.Io.Writer, url: []const u8, path
         captured.encoded.bytes,
         captured.encoded.root,
         captured.projection,
+        .{ .name = "Apricot", .email = "apricot@localhost" },
         timestamp,
     );
     var commit_hex: [40]u8 = undefined;
